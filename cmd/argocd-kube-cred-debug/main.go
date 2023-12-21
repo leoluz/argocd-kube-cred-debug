@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/argoproj/argo-cd/v2/util/db"
+	"github.com/argoproj/argo-cd/v2/util/env"
 	"github.com/argoproj/argo-cd/v2/util/kube"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -15,20 +16,21 @@ import (
 )
 
 func main() {
-	secretName := os.Getenv("ARGOCD_SECRET_NAME")
-	if secretName == "" {
+	secretName := flag.String("argocd-secret-name", env.StringFromEnv("ARGOCD_SECRET_NAME", ""), "the argocd secret name for a given remote cluster")
+	secretNamespace := flag.String("argocd-secret-namespace", env.StringFromEnv("ARGOCD_SECRET_NAMESPACE", ""), "the namespace where the secret lives")
+	kubeConfigPath := flag.String("kubeconfig-path", env.StringFromEnv("KUBE_CONFIG_PATH", ""), "the path to the kubeconfig file for out of cluster connection")
+	flag.Parse()
+
+	if secretName == nil || *secretName == "" {
 		log.Fatal("env var ARGOCD_SECRET_NAME must be provided")
 	}
-	secretNamespace := os.Getenv("ARGOCD_SECRET_NAMESPACE")
-	if secretName == "" {
+	if secretNamespace == nil || *secretNamespace == "" {
 		log.Fatal("env var ARGOCD_SECRET_NAMESPACE must be provided")
 	}
-
-	kubeConfigPath := os.Getenv("KUBE_CONFIG_PATH")
 	var restConfig *rest.Config
 	var err error
-	if kubeConfigPath != "" {
-		restConfig, err = clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if kubeConfigPath != nil && *kubeConfigPath != "" {
+		restConfig, err = clientcmd.BuildConfigFromFlags("", *kubeConfigPath)
 		if err != nil {
 			log.Fatalf("error building rest config: %s", err)
 		}
@@ -44,7 +46,7 @@ func main() {
 		log.Fatalf("error creating k8s clientset: %s", err)
 	}
 
-	clusterSecret, err := clientset.CoreV1().Secrets(secretNamespace).Get(context.Background(), secretName, v1.GetOptions{})
+	clusterSecret, err := clientset.CoreV1().Secrets(*secretNamespace).Get(context.Background(), *secretName, v1.GetOptions{})
 	if err != nil {
 		log.Fatalf("error getting secret: %s", err)
 	}
