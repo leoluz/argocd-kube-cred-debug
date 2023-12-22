@@ -15,8 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauthv1beta1 "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
-
-	"github.com/argoproj/argo-cd/v2/util/errors"
 )
 
 const (
@@ -34,16 +32,37 @@ const (
 // newAWSCommand returns a new instance of an aws command that generates k8s auth token
 // implementation is "inspired" by https://github.com/kubernetes-sigs/aws-iam-authenticator/blob/e61f537662b64092ed83cb76e600e023f627f628/pkg/token/token.go#L316
 func main() {
-	clusterName := flag.String("argocd-secret-name", "", "")
+	clusterName := flag.String("cluster-name", "", "")
 	roleARN := flag.String("role-arn", "", "")
 	flag.Parse()
 
+	if clusterName == nil || *clusterName == "" {
+		exitIfErr("", fmt.Errorf("cluster-name not provided"), 25)
+	}
+
 	presignedURLString, err := getSignedRequestWithRetry(context.TODO(), time.Minute, 5*time.Second, *clusterName, *roleARN, getSignedRequest)
-	errors.CheckError(err)
+	exitIfErr("error signing request with retry", err, 13)
+	if presignedURLString == "" {
+		os.Exit(55)
+	}
+	// errors.CheckError(err)
 	token := v1Prefix + base64.RawURLEncoding.EncodeToString([]byte(presignedURLString))
 	// Set token expiration to 1 minute before the presigned URL expires for some cushion
-	tokenExpiration := time.Now().Local().Add(presignedURLExpiration - 10*time.Minute)
-	_, _ = fmt.Fprint(os.Stdout, formatJSON(token, tokenExpiration))
+	tokenExpiration := time.Now().Local().Add(presignedURLExpiration - 1*time.Minute)
+	result := formatJSON(token, tokenExpiration)
+	_, err = fmt.Fprint(os.Stdout, result)
+	exitIfErr("error printing to stdout", err, 3)
+}
+
+func exitIfErr(msg string, err error, code int) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("%s: %s", msg, err))
+		fmt.Fprintln(os.Stdout, fmt.Errorf("%s: %s", msg, err))
+		if code == 0 {
+			code = 100
+		}
+		os.Exit(code)
+	}
 }
 
 type getSignedRequestFunc func(clusterName, roleARN string) (string, error)
@@ -65,11 +84,18 @@ func getSignedRequestWithRetry(ctx context.Context, timeout, interval time.Durat
 }
 
 func getSignedRequest(clusterName, roleARN string) (string, error) {
+	// sim := true
+	// cfg := &aws.Config{
+	// 	CredentialsChainVerboseErrors: &sim,
+	// }
 	sess, err := session.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("error creating new AWS session: %s", err)
 	}
 	stsAPI := sts.New(sess)
+	// if roleARN == "" {
+	// 	return "", fmt.Errorf("roleARN is empty")
+	// }
 	if roleARN != "" {
 		creds := stscreds.NewCredentials(sess, roleARN)
 		stsAPI = sts.New(sess, &aws.Config{Credentials: creds})

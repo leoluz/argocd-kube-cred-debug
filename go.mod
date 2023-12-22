@@ -43,8 +43,8 @@ require (
 	github.com/go-git/go-billy/v5 v5.4.1 // indirect
 	github.com/go-git/go-git/v5 v5.8.1 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
-	github.com/go-openapi/jsonpointer v0.19.5 // indirect
-	github.com/go-openapi/jsonreference v0.20.0 // indirect
+	github.com/go-openapi/jsonpointer v0.19.6 // indirect
+	github.com/go-openapi/jsonreference v0.20.1 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/go-redis/cache/v9 v9.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
@@ -124,26 +124,28 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.26.11 // indirect
-	k8s.io/apiextensions-apiserver v0.24.2 // indirect
+	k8s.io/apiextensions-apiserver v0.26.4 // indirect
 	k8s.io/apiserver v0.26.11 // indirect
 	k8s.io/cli-runtime v0.26.11 // indirect
 	k8s.io/component-base v0.26.11 // indirect
 	k8s.io/component-helpers v0.26.11 // indirect
-	k8s.io/klog/v2 v2.80.1 // indirect
-	k8s.io/kube-aggregator v0.24.2 // indirect
-	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
-	k8s.io/kubectl v0.24.2 // indirect
+	k8s.io/klog/v2 v2.100.1 // indirect
+	k8s.io/kube-aggregator v0.26.4 // indirect
+	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
+	k8s.io/kubectl v0.26.4 // indirect
 	k8s.io/kubernetes v1.26.11 // indirect
 	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d // indirect
 	oras.land/oras-go/v2 v2.3.0 // indirect
-	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
+	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.12.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.13.9 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
 replace (
+	github.com/argoproj/gitops-engine => github.com/leoluz/gitops-engine v0.4.1-0.20231222010428-aaa29a185c05
+
 	// https://github.com/golang/go/issues/33546#issuecomment-519656923
 	github.com/go-check/check => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
 
@@ -155,13 +157,13 @@ replace (
 
 	// Avoid CVE-2022-28948
 	gopkg.in/yaml.v3 => gopkg.in/yaml.v3 v3.0.1
-
 	k8s.io/api => k8s.io/api v0.26.11
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.11
 	k8s.io/apimachinery => k8s.io/apimachinery v0.26.11
 	k8s.io/apiserver => k8s.io/apiserver v0.26.11
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.26.11
-	k8s.io/client-go => k8s.io/client-go v0.26.11
+
+	k8s.io/client-go => github.com/leoluz/client-go v0.0.0-20231222212347-972bcd0ef3ab
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.26.11
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.26.11
 	k8s.io/code-generator => k8s.io/code-generator v0.26.11
