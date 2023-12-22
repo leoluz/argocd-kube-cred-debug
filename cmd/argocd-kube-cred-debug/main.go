@@ -65,8 +65,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("error converting secret to cluster: %s", err)
 	}
-	// c.Config.AWSAuthConfig.RoleARN = "arn:aws:iam::795188202216:role/k8s-dev-argocd-usw2-dev"
-
 	remoteK8sConfig := toRemoteConfig(c)
 
 	kubectl := kube.NewKubectl()
