@@ -7,11 +7,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/db"
 	"github.com/argoproj/argo-cd/v2/util/env"
-	"github.com/argoproj/argo-cd/v2/util/kube"
+	argokube "github.com/argoproj/argo-cd/v2/util/kube"
+	"github.com/argoproj/gitops-engine/pkg/utils/kube"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -23,6 +25,8 @@ func main() {
 	secretName := flag.String("argocd-secret-name", env.StringFromEnv("ARGOCD_SECRET_NAME", ""), "the argocd secret name for a given remote cluster")
 	secretNamespace := flag.String("argocd-secret-namespace", env.StringFromEnv("ARGOCD_SECRET_NAMESPACE", ""), "the namespace where the secret lives")
 	kubeConfigPath := flag.String("kubeconfig-path", env.StringFromEnv("KUBE_CONFIG_PATH", ""), "the path to the kubeconfig file for out of cluster connection")
+	jobDurationStr := flag.String("argocd-job-duration", env.StringFromEnv("ARGOCD_JOB_DURATION", "2h"), "the total duration the job will be running")
+	pollingIntervalStr := flag.String("argocd-polling-interval", env.StringFromEnv("ARGOCD_POLLING_INTERVAL", "5s"), "the time to wait between requests to kubeapi")
 	flag.Parse()
 
 	if secretName == nil || *secretName == "" {
@@ -32,13 +36,16 @@ func main() {
 		log.Fatal("env var ARGOCD_SECRET_NAMESPACE must be provided")
 	}
 
-	fmt.Println("Environment Variables:")
-	for _, env := range os.Environ() {
-		fmt.Println(env)
+	jobDuration, err := time.ParseDuration(*jobDurationStr)
+	if err != nil {
+		log.Fatalf("error parsing job duration: %s", err)
+	}
+	pollingInterval, err := time.ParseDuration(*pollingIntervalStr)
+	if err != nil {
+		log.Fatalf("error parsing polling interval: %s", err)
 	}
 
 	var restConfig *rest.Config
-	var err error
 	if kubeConfigPath != nil && *kubeConfigPath != "" {
 		restConfig, err = clientcmd.BuildConfigFromFlags("", *kubeConfigPath)
 		if err != nil {
@@ -67,13 +74,42 @@ func main() {
 	}
 	remoteK8sConfig := toRemoteConfig(c)
 
-	kubectl := kube.NewKubectl()
-	version, err := kubectl.GetServerVersion(remoteK8sConfig)
+	kubectl := argokube.NewKubectl()
+	_, err = getVersionLoop(kubectl, remoteK8sConfig, jobDuration, pollingInterval)
 	if err != nil {
-		log.Fatalf("error getting server version: %s", err)
+		fmt.Printf("%s > getVersionLoop error: %s\n", time.Now(), err)
+		os.Exit(1)
 	}
+	fmt.Printf("%s > no errors", time.Now())
+}
 
-	fmt.Printf("cluster: %s version: %s\n", string(clusterSecret.Data["name"]), version)
+func getVersionLoop(kubectl kube.Kubectl, config *rest.Config, duration, interval time.Duration) (string, error) {
+	end := time.Now().Add(duration)
+	version := ""
+	counter := 0
+	var err error
+	for {
+		counter++
+		fmt.Println("---")
+		version, err = getServerVersion(kubectl, config)
+		if err != nil {
+			return "", fmt.Errorf("error during execution %d: %s", counter, err)
+		}
+		fmt.Printf("%s > Server version: %s\n", time.Now(), version)
+		time.Sleep(interval)
+		if time.Now().After(end) {
+			break
+		}
+	}
+	return version, nil
+}
+
+func getServerVersion(kubectl kube.Kubectl, config *rest.Config) (string, error) {
+	version, err := kubectl.GetServerVersion(config)
+	if err != nil {
+		return "", fmt.Errorf("error getting server version: %s", err)
+	}
+	return version, nil
 }
 
 func toRemoteConfig(c *v1alpha1.Cluster) *rest.Config {

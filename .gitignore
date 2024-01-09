@@ -19,3 +19,6 @@
 
 # Go workspace file
 go.work
+
+/argocd-k8s-auth
+/argocd-kube-cred-debug

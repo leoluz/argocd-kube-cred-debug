@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -25,8 +27,9 @@ const (
 	// set this parameter to the actual expiration, and make it configurable.
 	requestPresignParam = 60
 	// The actual token expiration (presigned STS urls are valid for 15 minutes after timestamp in x-amz-date).
-	presignedURLExpiration = 15 * time.Minute
-	v1Prefix               = "k8s-aws-v1."
+	presignedURLExpiration       = 15 * time.Minute
+	v1Prefix                     = "k8s-aws-v1."
+	AWSProviderNotExpirerErrCode = "ProviderNotExpirer"
 )
 
 // newAWSCommand returns a new instance of an aws command that generates k8s auth token
@@ -40,15 +43,22 @@ func main() {
 		exitIfErr("", fmt.Errorf("cluster-name not provided"), 25)
 	}
 
-	presignedURLString, err := getSignedRequestWithRetry(context.TODO(), time.Minute, 5*time.Second, *clusterName, *roleARN, getSignedRequest)
-	exitIfErr("error signing request with retry", err, 13)
+	presignedURLString, sessionExpiresAt, err := getSignedRequestWithRetry(context.TODO(), time.Minute, 5*time.Second, *clusterName, *roleARN, getSignedRequest)
+	if err != nil {
+
+		if strings.Contains(err.Error(), "ProviderNotExpirer") {
+			exitIfErr("error get expiration", err, 14)
+
+		}
+		exitIfErr("error signing request with retry", err, 13)
+	}
 	if presignedURLString == "" {
 		os.Exit(55)
 	}
-	// errors.CheckError(err)
 	token := v1Prefix + base64.RawURLEncoding.EncodeToString([]byte(presignedURLString))
-	// Set token expiration to 1 minute before the presigned URL expires for some cushion
-	tokenExpiration := time.Now().Local().Add(presignedURLExpiration - 1*time.Minute)
+	tokenExpiration, err := getTokenExpirationDate(sessionExpiresAt)
+	exitIfErr("error getting token expiration date", err, 3)
+
 	result := formatJSON(token, tokenExpiration)
 	_, err = fmt.Fprint(os.Stdout, result)
 	exitIfErr("error printing to stdout", err, 3)
@@ -65,37 +75,50 @@ func exitIfErr(msg string, err error, code int) {
 	}
 }
 
-type getSignedRequestFunc func(clusterName, roleARN string) (string, error)
+type getSignedRequestFunc func(clusterName, roleARN string) (string, *time.Time, error)
 
-func getSignedRequestWithRetry(ctx context.Context, timeout, interval time.Duration, clusterName, roleARN string, fn getSignedRequestFunc) (string, error) {
+// getTokenExpirationDate will compare the given sessionExpiresAt with the predefined
+// STS token expiration of 15 minutes. It will return the more recent time minus 1 minute
+// for some cushion. Will return error if sessionExpiresAt is < 1 minute.
+// This will avoid the error "the server has asked for the client to provide credentials"
+// in Argo CD.
+func getTokenExpirationDate(sessionExpiresAt *time.Time) (time.Time, error) {
+	tokenExpiration := time.Now().Local().Add(presignedURLExpiration - 1*time.Minute)
+	if sessionExpiresAt == nil {
+		return tokenExpiration, nil
+	}
+	sessionExpiresAtSafe := sessionExpiresAt.Add(-time.Minute)
+	if sessionExpiresAtSafe.Before(time.Now()) {
+		return time.Time{}, fmt.Errorf("session expires in less than one minute")
+	}
+	if sessionExpiresAtSafe.Before(tokenExpiration) {
+		return sessionExpiresAtSafe, nil
+	}
+	return tokenExpiration, nil
+}
+
+func getSignedRequestWithRetry(ctx context.Context, timeout, interval time.Duration, clusterName, roleARN string, fn getSignedRequestFunc) (string, *time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for {
-		signed, err := fn(clusterName, roleARN)
+		signed, sessionExpiresAt, err := fn(clusterName, roleARN)
 		if err == nil {
-			return signed, nil
+			return signed, sessionExpiresAt, nil
 		}
 		select {
 		case <-ctx.Done():
-			return "", fmt.Errorf("timeout while trying to get signed aws request: last error: %s", err)
+			return "", nil, fmt.Errorf("timeout while trying to get signed aws request: last error: %s", err)
 		case <-time.After(interval):
 		}
 	}
 }
 
-func getSignedRequest(clusterName, roleARN string) (string, error) {
-	// sim := true
-	// cfg := &aws.Config{
-	// 	CredentialsChainVerboseErrors: &sim,
-	// }
+func getSignedRequest(clusterName, roleARN string) (string, *time.Time, error) {
 	sess, err := session.NewSession()
 	if err != nil {
-		return "", fmt.Errorf("error creating new AWS session: %s", err)
+		return "", nil, fmt.Errorf("error creating new AWS session: %s", err)
 	}
 	stsAPI := sts.New(sess)
-	// if roleARN == "" {
-	// 	return "", fmt.Errorf("roleARN is empty")
-	// }
 	if roleARN != "" {
 		creds := stscreds.NewCredentials(sess, roleARN)
 		stsAPI = sts.New(sess, &aws.Config{Credentials: creds})
@@ -104,9 +127,25 @@ func getSignedRequest(clusterName, roleARN string) (string, error) {
 	request.HTTPRequest.Header.Add(clusterIDHeader, clusterName)
 	signed, err := request.Presign(requestPresignParam)
 	if err != nil {
-		return "", fmt.Errorf("error presigning AWS request: %s", err)
+		return "", nil, fmt.Errorf("error presigning AWS request: %s", err)
 	}
-	return signed, nil
+	sessionExpiresAt, err := sess.Config.Credentials.ExpiresAt()
+	if err != nil {
+		// some credentials providers don't support the aws.Expirer interface and
+		// an error will be returned in this case.
+		if awsErr, ok := err.(awserr.Error); ok {
+			// if the credentials provider can't answer what the token expiration is
+			// we ignore it. This might lead to the "server has asked the client to
+			// provide credentials" but there is no way to know if the session will
+			// be expired during the lifetime of the signed URL.
+			if awsErr.Code() == AWSProviderNotExpirerErrCode {
+				return signed, nil, nil
+			}
+		}
+		return "", nil, fmt.Errorf("error getting AWS session expiration time: %s", err)
+	}
+
+	return signed, &sessionExpiresAt, nil
 }
 
 func formatJSON(token string, expiration time.Time) string {

@@ -4,6 +4,7 @@ go 1.21.3
 
 require (
 	github.com/argoproj/argo-cd/v2 v2.9.3
+	github.com/argoproj/gitops-engine v0.7.1-0.20230906152414-b0fffe419a0f
 	github.com/aws/aws-sdk-go v1.44.317
 	k8s.io/apimachinery v0.26.11
 	k8s.io/client-go v0.26.11
@@ -19,7 +20,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20230717121422-5aa5874ade95 // indirect
 	github.com/acomagu/bufpipe v1.0.4 // indirect
-	github.com/argoproj/gitops-engine v0.7.1-0.20230906152414-b0fffe419a0f // indirect
 	github.com/argoproj/pkg v0.13.7-0.20230626144333-d56162821bd1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -163,7 +163,7 @@ replace (
 	k8s.io/apiserver => k8s.io/apiserver v0.26.11
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.26.11
 
-	k8s.io/client-go => github.com/leoluz/client-go v0.0.0-20231222212347-972bcd0ef3ab
+	k8s.io/client-go => github.com/leoluz/client-go v0.0.0-20240102195254-868c5a622b13
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.26.11
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.26.11
 	k8s.io/code-generator => k8s.io/code-generator v0.26.11
